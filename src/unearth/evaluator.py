@@ -127,6 +127,7 @@ class Evaluator:
         hashes (dict[str, list[str]): The links must have the correct hashes
         ignore_compatibility (bool): Whether to ignore the compatibility check
         allow_yanked (bool): Whether to allow yanked candidates
+        allow_prereleases (bool): Whether to allow pre-release candidates
         format_control (bool): Format control flags
     """
 
@@ -136,6 +137,7 @@ class Evaluator:
     hashes: dict[str, list[str]] = dc.field(default_factory=dict)
     ignore_compatibility: bool = False
     allow_yanked: bool = False
+    allow_prereleases: bool = True
     format_control: FormatControl = dc.field(default_factory=FormatControl)
 
     def __post_init__(self) -> None:
@@ -145,6 +147,10 @@ class Evaluator:
         if link.yank_reason is not None and not self.allow_yanked:
             yank_reason = f"due to {link.yank_reason}" if link.yank_reason else ""
             raise LinkMismatchError(f"Yanked {yank_reason}")
+
+    def _check_prerelease(self, version: str) -> None:
+        if not self.allow_prereleases and Version(version).is_prerelease:
+            raise LinkMismatchError("The requirement cannot be a pre-release")
 
     def _check_requires_python(self, link: Link) -> None:
         if not self.ignore_compatibility and link.requires_python:
@@ -254,6 +260,7 @@ class Evaluator:
                         f"Invalid version in the filename {egg_info}: {version}"
                     )
             self._check_hashes(link)
+            self._check_prerelease(version)
         except LinkMismatchError as e:
             logger.debug("Skipping link %s: %s", link, e)
             return None

@@ -139,6 +139,7 @@ class PackageFinder:
         package_name: str,
         allow_yanked: bool = False,
         hashes: dict[str, list[str]] | None = None,
+        allow_prereleases: bool | None = None,
     ) -> Evaluator:
         """Build an evaluator for the given package name.
 
@@ -146,12 +147,15 @@ class PackageFinder:
             package_name (str): The desired package name
             allow_yanked (bool): Whether to allow yanked candidates.
             hashes (dict[str, list[str]]|None): The hashes to filter on.
+            allow_prereleases (bool|None): Whether to allow pre-release candidates.
 
         Returns:
             Evaluator: The evaluator for the given package name
         """
         if hashes:
             hashes = {name: sorted(values) for name, values in hashes.items()}
+        if allow_prereleases is None:
+            allow_prereleases = True
         canonical_name = canonicalize_name(package_name)
         format_control = FormatControl(
             no_binary=canonical_name in self.no_binary or ":all:" in self.no_binary,
@@ -164,6 +168,7 @@ class PackageFinder:
             target_python=self.target_python,
             ignore_compatibility=self.ignore_compatibility,
             allow_yanked=allow_yanked,
+            allow_prereleases=allow_prereleases,
             hashes=hashes or {},
             format_control=format_control,
         )
@@ -226,6 +231,7 @@ class PackageFinder:
         package_name: str,
         allow_yanked: bool = False,
         hashes: dict[str, list[str]] | None = None,
+        allow_prereleases: bool | None = None,
     ) -> Iterable[Package]:
         """Find all packages with the given name.
 
@@ -233,11 +239,14 @@ class PackageFinder:
             package_name (str): The desired package name
             allow_yanked (bool): Whether to allow yanked candidates.
             hashes (dict[str, list[str]]|None): The hashes to filter on.
+            allow_prereleases (bool|None): Whether to allow pre-release candidates.
 
         Returns:
             Iterable[Package]: The packages with the given name, sorted by best match.
         """
-        evaluator = self.build_evaluator(package_name, allow_yanked, hashes)
+        evaluator = self.build_evaluator(
+            package_name, allow_yanked, hashes, allow_prereleases=allow_prereleases
+        )
 
         def find_one_source(source: Source) -> Iterable[Package]:
             if source["type"] == "index":
@@ -285,13 +294,19 @@ class PackageFinder:
         requirement: packaging.requirements.Requirement,
         allow_yanked: bool | None = None,
         hashes: dict[str, list[str]] | None = None,
+        allow_prereleases: bool | None = None,
     ) -> Iterable[Package]:
         if allow_yanked is None:
             allow_yanked = is_equality_specifier(requirement.specifier)
         if requirement.url:
             yield Package(requirement.name, None, link=Link(requirement.url))
         else:
-            yield from self._find_packages(requirement.name, allow_yanked, hashes)
+            yield from self._find_packages(
+                requirement.name,
+                allow_yanked,
+                hashes,
+                allow_prereleases=allow_prereleases,
+            )
 
     def find_matches(
         self,
@@ -318,7 +333,12 @@ class PackageFinder:
             requirement = packaging.requirements.Requirement(requirement)
         return LazySequence(
             self._evaluate_packages(
-                self._find_packages_from_requirement(requirement, allow_yanked, hashes),
+                self._find_packages_from_requirement(
+                    requirement,
+                    allow_yanked,
+                    hashes,
+                    allow_prereleases=allow_prereleases,
+                ),
                 requirement,
                 allow_prereleases,
             )
@@ -348,7 +368,7 @@ class PackageFinder:
         if isinstance(requirement, str):
             requirement = packaging.requirements.Requirement(requirement)
         packages = self._find_packages_from_requirement(
-            requirement, allow_yanked, hashes
+            requirement, allow_yanked, hashes, allow_prereleases=allow_prereleases
         )
         candidates = LazySequence(packages)
         applicable_candidates = LazySequence(
